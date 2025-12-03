@@ -8,6 +8,6 @@
 
 ![screenshot-2018-1-16](res/images/screenshot.png)
 
-## License
+<!-- ## License
 
-This project is licensed under the terms of the [MIT license](LICENSE).
+This project is licensed under the terms of the [MIT license](LICENSE). -->
