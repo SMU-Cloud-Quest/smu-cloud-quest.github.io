@@ -37,11 +37,17 @@ export async function submitRegistration(
 
   // Check if authenticated user has already registered
   if (userId) {
-    const { data: existingRegistration } = await supabase
+    const { data: existingRegistration, error: checkError } = await supabase
       .from("registrations")
       .select("id")
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
+
+    // Log error for debugging (but don't fail - might just be no registration found)
+    // PGRST116 is the code for "no rows returned" which is expected when user hasn't registered
+    if (checkError && checkError.code !== "PGRST116") {
+      console.error("Error checking existing registration by user_id:", checkError);
+    }
 
     if (existingRegistration) {
       return {
@@ -51,12 +57,17 @@ export async function submitRegistration(
     }
   } else {
     // For guest registrations, check by email
-    const { data: existingGuestRegistration } = await supabase
+    const { data: existingGuestRegistration, error: guestCheckError } = await supabase
       .from("registrations")
       .select("id")
       .eq("email", validatedData.data.email)
       .is("user_id", null)
-      .single();
+      .maybeSingle();
+
+    // Log error for debugging (but don't fail - might just be no registration found)
+    if (guestCheckError && guestCheckError.code !== "PGRST116") {
+      console.error("Error checking existing guest registration by email:", guestCheckError);
+    }
 
     if (existingGuestRegistration) {
       return {
@@ -151,7 +162,7 @@ export async function submitRegistration(
       resume_path: resumePath,
     })
     .select()
-    .single();
+    .maybeSingle();
 
   // Log for debugging
   if (insertedData) {
@@ -164,6 +175,15 @@ export async function submitRegistration(
 
   if (insertError) {
     console.error("Registration error:", insertError);
+    return {
+      success: false,
+      error: "Failed to submit registration. Please try again.",
+    };
+  }
+
+  // Check if insert actually succeeded (maybeSingle can return null)
+  if (!insertedData) {
+    console.error("Registration insert returned no data");
     return {
       success: false,
       error: "Failed to submit registration. Please try again.",
