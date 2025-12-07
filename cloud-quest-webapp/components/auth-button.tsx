@@ -1,6 +1,9 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "./ui/button";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/client";
 import { LogoutButton } from "./logout-button";
 import {
   DropdownMenu,
@@ -9,18 +12,53 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { User, LayoutDashboard, LogOut } from "lucide-react";
+import { User, LayoutDashboard } from "lucide-react";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
 
-export async function AuthButton() {
-  try {
-    const supabase = await createClient();
+export function AuthButton() {
+  const supabase = useMemo(() => createClient(), []);
+  const [user, setUser] = useState<SupabaseUser | null>(null);
 
-    // You can also use getUser() which will be slower.
-    const { data } = await supabase.auth.getClaims();
+  useEffect(() => {
+    let isMounted = true;
 
-    const user = data?.claims;
+    const fetchSession = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!isMounted) return;
+        setUser(data.session?.user ?? null);
+      } catch (error) {
+        console.error("AuthButton error:", error);
+      }
+    };
 
-  return user ? (
+    fetchSession();
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!isMounted) return;
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      isMounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  if (!user) {
+    return (
+      <div className="flex gap-2">
+        <Button asChild size="sm" variant={"outline"}>
+          <Link href="/auth/login">Sign in</Link>
+        </Button>
+        <Button asChild size="sm" variant={"default"} className="bg-brand-blue hover:bg-brand-blue-dark">
+          <Link href="/auth/sign-up">Sign up</Link>
+        </Button>
+      </div>
+    );
+  }
+
+  return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" className="gap-2">
@@ -45,28 +83,5 @@ export async function AuthButton() {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  ) : (
-    <div className="flex gap-2">
-      <Button asChild size="sm" variant={"outline"}>
-        <Link href="/auth/login">Sign in</Link>
-      </Button>
-      <Button asChild size="sm" variant={"default"} className="bg-brand-blue hover:bg-brand-blue-dark">
-        <Link href="/auth/sign-up">Sign up</Link>
-      </Button>
-    </div>
   );
-  } catch (error) {
-    // If Supabase is not configured, show sign in buttons
-    console.error("AuthButton error:", error);
-    return (
-      <div className="flex gap-2">
-        <Button asChild size="sm" variant={"outline"}>
-          <Link href="/auth/login">Sign in</Link>
-        </Button>
-        <Button asChild size="sm" variant={"default"} className="bg-brand-blue hover:bg-brand-blue-dark">
-          <Link href="/auth/sign-up">Sign up</Link>
-        </Button>
-      </div>
-    );
-  }
 }
