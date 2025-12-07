@@ -12,12 +12,13 @@ import {
 import { User, LayoutDashboard, LogOut } from "lucide-react";
 
 export async function AuthButton() {
-  const supabase = await createClient();
+  try {
+    const supabase = await createClient();
 
-  // You can also use getUser() which will be slower.
-  const { data } = await supabase.auth.getClaims();
+    // You can also use getUser() which will be slower.
+    const { data } = await supabase.auth.getClaims();
 
-  const user = data?.claims;
+    const user = data?.claims;
 
   return user ? (
     <DropdownMenu>
@@ -54,4 +55,18 @@ export async function AuthButton() {
       </Button>
     </div>
   );
+  } catch (error) {
+    // If Supabase is not configured, show sign in buttons
+    console.error("AuthButton error:", error);
+    return (
+      <div className="flex gap-2">
+        <Button asChild size="sm" variant={"outline"}>
+          <Link href="/auth/login">Sign in</Link>
+        </Button>
+        <Button asChild size="sm" variant={"default"} className="bg-brand-blue hover:bg-brand-blue-dark">
+          <Link href="/auth/sign-up">Sign up</Link>
+        </Button>
+      </div>
+    );
+  }
 }
