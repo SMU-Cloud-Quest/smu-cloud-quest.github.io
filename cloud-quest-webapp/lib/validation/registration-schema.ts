@@ -61,6 +61,7 @@ export const registrationDefaultValues = {
   email: "",
   university: "Southern Methodist University",
   major: "",
+  age: undefined,
   dietaryRestrictions: "",
   additionalComments: "",
   consentShareWithEmployers: false,

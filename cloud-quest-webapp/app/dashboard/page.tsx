@@ -28,6 +28,7 @@ export const metadata: Metadata = {
 
 interface Registration {
   id: string;
+  user_id: string | null;
   first_name: string;
   last_name: string;
   email: string;
@@ -53,12 +54,88 @@ export default async function DashboardPage() {
   const userId = userData.claims.sub as string;
   const userEmail = userData.claims.email as string;
 
-  // Get registration data
-  const { data: registration } = await supabase
+  // Get registration data - check by user_id first, then by email (for guest registrations)
+  let { data: registration, error: registrationError } = await supabase
     .from("registrations")
     .select("*")
     .eq("user_id", userId)
-    .single<Registration>();
+    .maybeSingle<Registration>();
+
+  // Log error for debugging (but don't fail - might just be no registration found)
+  // PGRST116 is the code for "no rows returned" which is expected when user hasn't registered
+  if (registrationError && Object.keys(registrationError).length > 0 && registrationError.code !== "PGRST116") {
+    console.error("Error fetching registration by user_id:", registrationError);
+  }
+
+  // If no registration found by user_id, check by email (guest registration or email match)
+  if (!registration && userEmail) {
+    const normalizedEmail = userEmail.toLowerCase().trim();
+    
+    // First check for guest registrations (user_id is null)
+    let { data: guestRegistration, error: guestError } = await supabase
+      .from("registrations")
+      .select("*")
+      .eq("email", normalizedEmail)
+      .is("user_id", null)
+      .maybeSingle<Registration>();
+    
+    // Only log if it's a real error, not "no rows found"
+    if (guestError && Object.keys(guestError).length > 0 && guestError.code !== "PGRST116") {
+      console.error("Error fetching guest registration:", guestError);
+    }
+
+    // If still not found, check by email regardless of user_id (in case of data inconsistency)
+    if (!guestRegistration) {
+      const { data: emailRegistration, error: emailError } = await supabase
+        .from("registrations")
+        .select("*")
+        .eq("email", normalizedEmail)
+        .maybeSingle<Registration>();
+      
+      // Only log if it's a real error, not "no rows found"
+      if (emailError && Object.keys(emailError).length > 0 && emailError.code !== "PGRST116") {
+        console.error("Error fetching registration by email:", emailError);
+      }
+
+      // If found by email but user_id doesn't match or is null, update it
+      if (emailRegistration) {
+        if (emailRegistration.user_id !== userId) {
+          const { data: updatedRegistration, error: updateError } = await supabase
+            .from("registrations")
+            .update({ user_id: userId })
+            .eq("id", emailRegistration.id)
+            .select()
+            .maybeSingle<Registration>();
+          
+          if (updateError) {
+            console.error("Error updating registration user_id:", updateError);
+            // Still use the registration even if update fails
+            registration = emailRegistration;
+          } else {
+            registration = updatedRegistration;
+          }
+        } else {
+          registration = emailRegistration;
+        }
+      }
+    } else {
+      // Found guest registration, update it to link to the current user
+      const { data: updatedRegistration, error: updateError } = await supabase
+        .from("registrations")
+        .update({ user_id: userId })
+        .eq("id", guestRegistration.id)
+        .select()
+        .maybeSingle<Registration>();
+      
+      if (updateError) {
+        console.error("Error updating guest registration user_id:", updateError);
+        // Still use the guest registration even if update fails
+        registration = guestRegistration;
+      } else {
+        registration = updatedRegistration;
+      }
+    }
+  }
 
   return (
     <div className="py-12">

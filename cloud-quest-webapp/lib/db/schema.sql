@@ -60,6 +60,17 @@ ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.registrations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.contact_messages ENABLE ROW LEVEL SECURITY;
 
+-- Helper function to check if user is admin (SECURITY DEFINER bypasses RLS to avoid recursion)
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.profiles 
+    WHERE id = auth.uid() AND is_admin = TRUE
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+
 -- Profiles RLS Policies
 -- Users can view their own profile
 CREATE POLICY "Users can view own profile" 
@@ -79,23 +90,21 @@ CREATE POLICY "Users can update own profile"
   FOR UPDATE 
   USING (auth.uid() = id);
 
--- Admins can view all profiles
+-- Admins can view all profiles (uses SECURITY DEFINER function to avoid recursion)
 CREATE POLICY "Admins can view all profiles" 
   ON public.profiles 
   FOR SELECT 
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles 
-      WHERE id = auth.uid() AND is_admin = TRUE
-    )
-  );
+  USING (public.is_admin());
 
 -- Registrations RLS Policies
--- Users can view their own registration (authenticated users only)
+-- Users can view their own registration (by user_id or by email for guest registrations)
 CREATE POLICY "Users can view own registration" 
   ON public.registrations 
   FOR SELECT 
-  USING (auth.uid() = user_id);
+  USING (
+    auth.uid() = user_id OR
+    (user_id IS NULL AND email = (SELECT email FROM auth.users WHERE id = auth.uid()))
+  );
 
 -- Anyone can insert a registration (guest or authenticated)
 -- For authenticated users, user_id must match their auth.uid()
@@ -108,22 +117,20 @@ CREATE POLICY "Anyone can insert registration"
     (user_id = auth.uid())
   );
 
--- Users can update their own registration
+-- Users can update their own registration (by user_id or by email for guest registrations)
 CREATE POLICY "Users can update own registration" 
   ON public.registrations 
   FOR UPDATE 
-  USING (auth.uid() = user_id);
+  USING (
+    auth.uid() = user_id OR
+    (user_id IS NULL AND email = (SELECT email FROM auth.users WHERE id = auth.uid()))
+  );
 
--- Admins can view all registrations
+-- Admins can view all registrations (uses SECURITY DEFINER function to avoid recursion)
 CREATE POLICY "Admins can view all registrations" 
   ON public.registrations 
   FOR SELECT 
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles 
-      WHERE id = auth.uid() AND is_admin = TRUE
-    )
-  );
+  USING (public.is_admin());
 
 -- Contact messages - anyone can insert (public contact form)
 CREATE POLICY "Anyone can submit contact message" 
@@ -131,16 +138,11 @@ CREATE POLICY "Anyone can submit contact message"
   FOR INSERT 
   WITH CHECK (TRUE);
 
--- Only admins can view contact messages
+-- Only admins can view contact messages (uses SECURITY DEFINER function to avoid recursion)
 CREATE POLICY "Admins can view contact messages" 
   ON public.contact_messages 
   FOR SELECT 
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles 
-      WHERE id = auth.uid() AND is_admin = TRUE
-    )
-  );
+  USING (public.is_admin());
 
 -- Function to automatically create profile on user signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -212,14 +214,11 @@ CREATE POLICY "Users can delete own resume"
     (storage.foldername(name))[1] = auth.uid()::text
   );
 
--- Admins can view all resumes
+-- Admins can view all resumes (uses SECURITY DEFINER function to avoid recursion)
 CREATE POLICY "Admins can view all resumes"
   ON storage.objects
   FOR SELECT
   USING (
     bucket_id = 'resumes' AND
-    EXISTS (
-      SELECT 1 FROM public.profiles 
-      WHERE id = auth.uid() AND is_admin = TRUE
-    )
+    public.is_admin()
   );

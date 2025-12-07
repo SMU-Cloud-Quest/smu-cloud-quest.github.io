@@ -11,6 +11,7 @@ import {
 interface SubmitRegistrationResult {
   success: boolean;
   error?: string;
+  warning?: string; // For non-critical issues like resume upload failure
 }
 
 export async function submitRegistration(
@@ -30,8 +31,9 @@ export async function submitRegistration(
   }
 
   // Get the current user (optional - guest registrations are allowed)
-  const { data: userData } = await supabase.auth.getClaims();
-  const userId = userData?.claims?.sub as string | undefined;
+  // Use getUser() instead of getClaims() for more reliable auth in server actions
+  const { data: { user } } = await supabase.auth.getUser();
+  const userId = user?.id;
 
   // Check if authenticated user has already registered
   if (userId) {
@@ -101,31 +103,64 @@ export async function submitRegistration(
 
     if (uploadError) {
       console.error("Resume upload error:", uploadError);
-      // Don't fail registration if resume upload fails
-      // Just log and continue
+      
+      // Check if the error is due to missing bucket
+      const errorMessage = uploadError.message || "";
+      const isBucketNotFound = 
+        errorMessage.includes("Bucket not found") ||
+        errorMessage.includes("404") ||
+        (uploadError as any)?.status === 404 ||
+        (uploadError as any)?.statusCode === "404";
+      
+      if (isBucketNotFound) {
+        console.error(
+          "Storage bucket 'resumes' not found. Please create it in Supabase Dashboard > Storage."
+        );
+        // Store warning to return to user
+        // We'll handle this after registration succeeds
+      } else {
+        console.error("Resume upload failed:", errorMessage);
+      }
+      // Continue with registration even if resume upload fails
     } else {
       resumePath = fileName;
     }
   }
 
+  // Normalize email to lowercase for consistent matching
+  const normalizedEmail = validatedData.data.email.toLowerCase().trim();
+
   // Insert the registration
-  const { error: insertError } = await supabase.from("registrations").insert({
-    user_id: userId || null, // null for guest registrations
-    first_name: validatedData.data.firstName,
-    last_name: validatedData.data.lastName,
-    email: validatedData.data.email,
-    university: validatedData.data.university,
-    major: validatedData.data.major,
-    grade_level: validatedData.data.gradeLevel,
-    tshirt_size: validatedData.data.tshirtSize,
-    age: validatedData.data.age,
-    dietary_restrictions: validatedData.data.dietaryRestrictions || null,
-    additional_comments: validatedData.data.additionalComments || null,
-    consent_data_storage: validatedData.data.consentDataStorage,
-    consent_share_with_employers: validatedData.data.consentShareWithEmployers,
-    consent_terms: validatedData.data.consentTerms,
-    resume_path: resumePath,
-  });
+  const { error: insertError, data: insertedData } = await supabase
+    .from("registrations")
+    .insert({
+      user_id: userId || null, // null for guest registrations
+      first_name: validatedData.data.firstName,
+      last_name: validatedData.data.lastName,
+      email: normalizedEmail,
+      university: validatedData.data.university,
+      major: validatedData.data.major,
+      grade_level: validatedData.data.gradeLevel,
+      tshirt_size: validatedData.data.tshirtSize,
+      age: validatedData.data.age,
+      dietary_restrictions: validatedData.data.dietaryRestrictions || null,
+      additional_comments: validatedData.data.additionalComments || null,
+      consent_data_storage: validatedData.data.consentDataStorage,
+      consent_share_with_employers: validatedData.data.consentShareWithEmployers,
+      consent_terms: validatedData.data.consentTerms,
+      resume_path: resumePath,
+    })
+    .select()
+    .single();
+
+  // Log for debugging
+  if (insertedData) {
+    console.log("Registration created successfully:", {
+      id: insertedData.id,
+      user_id: insertedData.user_id,
+      email: insertedData.email,
+    });
+  }
 
   if (insertError) {
     console.error("Registration error:", insertError);

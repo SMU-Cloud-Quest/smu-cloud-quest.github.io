@@ -61,10 +61,16 @@ A modern Next.js web application for the SMU AWS Cloud Quest Competition, featur
 
 5. **Set up Storage (for resume uploads)**
    
+   **IMPORTANT**: The resume upload feature requires a storage bucket to be created.
+   
    In Supabase Dashboard > Storage:
-   - Create a bucket named `resumes`
-   - Set it as private
-   - Apply the storage RLS policies from `lib/db/schema.sql`
+   1. Click "Create bucket"
+   2. Name it exactly: `resumes`
+   3. Set it as **Private** (not public)
+   4. Click "Create bucket"
+   5. Go to the SQL Editor and run the storage RLS policies from `lib/db/schema.sql` (lines 187-225)
+   
+   **Note**: If the bucket is not created, registrations will still work but resume uploads will fail silently. The registration will complete successfully without the resume.
 
 6. **Run the development server**
    ```bash

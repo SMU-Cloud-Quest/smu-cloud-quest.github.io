@@ -53,7 +53,7 @@ export function RegistrationForm({ userEmail }: RegistrationFormProps) {
     resolver: zodResolver(registrationSchema),
     defaultValues: {
       ...registrationDefaultValues,
-      email: userEmail,
+      email: userEmail || "",
     },
   });
 
@@ -106,6 +106,12 @@ export function RegistrationForm({ userEmail }: RegistrationFormProps) {
       if (result.error) {
         setError(result.error);
         return;
+      }
+
+      // If there's a warning (like resume upload failure), show it but still proceed
+      if (result.warning) {
+        // Log warning but don't block registration
+        console.warn(result.warning);
       }
 
       router.push("/register/success");
@@ -166,6 +172,7 @@ export function RegistrationForm({ userEmail }: RegistrationFormProps) {
                       type="email"
                       placeholder="your.email@smu.edu"
                       {...field}
+                      value={field.value || ""}
                       disabled={!!userEmail}
                     />
                   </FormControl>
@@ -191,8 +198,12 @@ export function RegistrationForm({ userEmail }: RegistrationFormProps) {
                       min={16}
                       max={100}
                       placeholder="21"
-                      {...field}
-                      onChange={(e) => field.onChange(parseInt(e.target.value))}
+                      value={field.value ?? ""}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        field.onChange(value === "" ? undefined : parseInt(value, 10));
+                      }}
+                      onBlur={field.onBlur}
                     />
                   </FormControl>
                   <FormMessage />

@@ -15,6 +15,8 @@ const typeColors: Record<ScheduleItem["type"], string> = {
   ceremony: "bg-brand-red text-white",
   networking: "bg-purple-600 text-white",
   competition: "bg-green-600 text-white",
+  panel: "bg-blue-600 text-white",
+  social: "bg-amber-600 text-white",
 };
 
 const typeLabels: Record<ScheduleItem["type"], string> = {
@@ -22,6 +24,8 @@ const typeLabels: Record<ScheduleItem["type"], string> = {
   ceremony: "Ceremony",
   networking: "Networking",
   competition: "Competition",
+  panel: "Panel",
+  social: "Social",
 };
 
 export function CalendarTableView({ items }: CalendarTableViewProps) {
